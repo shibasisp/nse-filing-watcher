@@ -43,13 +43,21 @@ HEADERS = {
     "Accept-Language": "en-GB,en;q=0.9",
 }
 
-# Same pattern a downstream consumer of this event would apply more
-# carefully — this is just a cheap pre-filter so we don't dispatch on every
-# board-meeting-intimation or dividend notice NSE publishes.
+# Same patterns the downstream consumer's own classifier uses (concall-fyi's
+# pipeline/discover.py, _is_transcript()) — kept in sync deliberately, since
+# the whole point of triggering on this rather than a plain schedule is to
+# only wake the downstream pipeline for filings its own filter would also
+# treat as a transcript, not on every conference-call intimation or audio
+# recording NSE publishes (which also contain "conference call"/"investor
+# call" and would otherwise match TRANSCRIPT_PATTERN alone).
 import re  # noqa: E402
 
 TRANSCRIPT_PATTERN = re.compile(
     r"\b(transcript|earnings call|conference call|con[\s-]?call|analyst call|investor call)\b",
+    re.I,
+)
+INTIMATION_PATTERN = re.compile(
+    r"\b(intimation|notice|invitation|schedule[sd]?|prior intimation|audio|recording|link)\b",
     re.I,
 )
 
@@ -94,7 +102,14 @@ def fetch_today(session: requests.Session) -> List[Dict[str, Any]]:
 
 def looks_like_transcript(row: Dict[str, Any]) -> bool:
     subject = f"{row.get('desc', '')} {row.get('attchmntText', '')}"
-    return bool(TRANSCRIPT_PATTERN.search(subject))
+    if not TRANSCRIPT_PATTERN.search(subject):
+        return False
+    # "Intimation of conference call" announces the call; it does not
+    # contain one. Only override the exclusion if "transcript" is literally
+    # present — mirrors discover.py's _is_transcript() exactly.
+    if INTIMATION_PATTERN.search(subject) and not re.search(r"\btranscript\b", subject, re.I):
+        return False
+    return True
 
 
 def filed_at(row: Dict[str, Any]) -> str:
