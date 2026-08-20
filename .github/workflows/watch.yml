@@ -1,0 +1,49 @@
+name: watch-nse-filings
+
+# Every 5 minutes, roughly 8:30 AM - 11:30 PM IST (3:00-17:55 UTC). Restricted
+# to that window purely out of courtesy to NSE's servers — nothing meaningful
+# files overnight, and there's no cost reason to poll then (this repo is
+# public: GitHub Actions minutes on standard runners are free here regardless
+# of frequency). Companies most commonly file board-meeting results after
+# market close, so the window deliberately runs well past 3:30 PM close.
+on:
+  schedule:
+    - cron: "*/5 3-17 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: watch
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check for new filings
+        env:
+          TARGET_REPO: ${{ secrets.TARGET_REPO }}
+          DISPATCH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
+        run: python check_and_dispatch.py
+
+      - name: Persist last-seen state
+        run: |
+          git config user.name "nse-filing-watcher"
+          git config user.email "watcher@users.noreply.github.com"
+          git add state.json
+          if ! git diff --cached --quiet; then
+            git commit -m "state: last-seen filing timestamp"
+            git push
+          fi
