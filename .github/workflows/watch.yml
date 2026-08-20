@@ -1,14 +1,12 @@
 name: watch-nse-filings
 
-# Every 5 minutes, roughly 8:30 AM - 11:30 PM IST (3:00-17:55 UTC). Restricted
-# to that window purely out of courtesy to NSE's servers — nothing meaningful
-# files overnight, and there's no cost reason to poll then (this repo is
-# public: GitHub Actions minutes on standard runners are free here regardless
-# of frequency). Companies most commonly file board-meeting results after
-# market close, so the window deliberately runs well past 3:30 PM close.
+# Triggered every 5 minutes by an external cron (cron-job.org) calling this
+# workflow's workflow_dispatch endpoint, not by GitHub's own `schedule`
+# trigger. `schedule` is best-effort and was observed drifting badly in
+# practice (delays growing from ~19min to over an hour between runs) — an
+# explicit workflow_dispatch call runs immediately instead of sitting in
+# GitHub's scheduler queue.
 on:
-  schedule:
-    - cron: "*/5 3-17 * * *"
   workflow_dispatch: {}
 
 concurrency:
