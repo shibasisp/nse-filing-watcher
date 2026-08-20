@@ -101,6 +101,17 @@ def filed_at(row: Dict[str, Any]) -> str:
     return str(row.get("an_dt") or row.get("sort_date") or "")
 
 
+def _parse_filed_at(value: str) -> Optional[datetime]:
+    """NSE's "DD-Mon-YYYY HH:MM:SS" strings don't sort correctly as plain
+    text across a month boundary (e.g. "01-Sep-2026" < "31-Aug-2026" as a
+    string, since the day digits are compared before the month letters) —
+    parse to a real datetime before comparing."""
+    try:
+        return datetime.strptime(value, "%d-%b-%Y %H:%M:%S")
+    except (ValueError, TypeError):
+        return None
+
+
 def dispatch(target_repo: str, token: str) -> None:
     response = requests.post(
         f"https://api.github.com/repos/{target_repo}/dispatches",
@@ -139,8 +150,11 @@ def main() -> int:
         print("nothing new")
         return 0
 
-    newest = max((filed_at(r) for r in candidates), default="")
-    if last_seen and newest and newest <= last_seen:
+    dated = [(filed_at(r), _parse_filed_at(filed_at(r))) for r in candidates]
+    newest, newest_dt = max(dated, key=lambda pair: pair[1] or datetime.min)
+
+    last_seen_dt = _parse_filed_at(last_seen) if last_seen else None
+    if last_seen_dt and newest_dt and newest_dt <= last_seen_dt:
         print(f"{len(candidates)} candidate(s) today, none newer than last check ({last_seen})")
         return 0
 
